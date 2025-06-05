@@ -1,11 +1,17 @@
 #![allow(unused)]
-use cli_todo::todolist::{States, Todo, TodoList};
+
+use clap::Parser;
+use cli_todo::cli::{Args, run};
+use cli_todo::todolist::{Todo, TodoList};
 
 fn main() {
-    let mut todo_list = TodoList::new(vec![]).unwrap();
+    let mut todo_list: TodoList = TodoList { list: vec![] };
 
-    todo_list.add(Todo::new("Buy milk", "Daily", 2).unwrap());
-    todo_list.add(Todo::new("Sleep", "Daily", 3).unwrap());
+    todo_list.read_json(String::from("todo.json"));
 
-    todo_list.write_json("todo.json");
+    let args = Args::parse();
+
+    run(&mut todo_list, args);
+
+    todo_list.write_json(String::from("todo.json"));
 }
