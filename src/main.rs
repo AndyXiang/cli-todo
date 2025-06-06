@@ -5,17 +5,20 @@ use std::process;
 use clap::Parser;
 use cli_todo::cli::{Args, run};
 use cli_todo::error::MyError;
-use cli_todo::todolist::{Todo, TodoList};
+use cli_todo::todolist::{Todo, TodoList, init};
 
 fn main() {
     let mut todo_list: TodoList = TodoList { list: vec![] };
 
-    todo_list
-        .read_json(String::from("todo.json"))
-        .unwrap_or_else(|err| {
-            println!("Problem reading todo history from json: {}", err);
-            process::exit(1);
-        });
+    let file_path = init().unwrap_or_else(|err| {
+        println!("Problem init the todo.json file: {}", err);
+        process::exit(1);
+    });
+
+    todo_list.read_json(&file_path).unwrap_or_else(|err| {
+        println!("Problem reading todo history from json: {}", err);
+        process::exit(1);
+    });
 
     let args = Args::parse();
 
@@ -24,10 +27,8 @@ fn main() {
         process::exit(1);
     });
 
-    todo_list
-        .write_json(String::from("todo.json"))
-        .unwrap_or_else(|err| {
-            println!("Problem writing todo history to json: {}", err);
-            process::exit(1);
-        });
+    todo_list.write_json(&file_path).unwrap_or_else(|err| {
+        println!("Problem writing todo history to json: {}", err);
+        process::exit(1);
+    });
 }
