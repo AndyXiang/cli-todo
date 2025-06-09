@@ -8,6 +8,7 @@ pub mod todolist {
     use clap::builder::Str;
     use dirs::home_dir;
     use serde::{Deserialize, Serialize};
+    use std::collections::HashMap;
     use std::fs;
     use std::fs::File;
     use std::io::{self, BufReader, BufWriter};
@@ -23,13 +24,28 @@ pub mod todolist {
     pub struct Todo {
         pub term: String,
         pub state: States,
+        pub category: String,
     }
 
     impl Todo {
-        pub fn new(term: String) -> Todo {
+        pub fn new(term: String, category: String) -> Todo {
             Todo {
                 term,
                 state: States::Undone,
+                category,
+            }
+        }
+    }
+
+    impl Clone for Todo {
+        fn clone(&self) -> Self {
+            Self {
+                term: self.term.clone(),
+                state: match self.state {
+                    States::Undone => States::Undone,
+                    States::Done => States::Done,
+                },
+                category: self.category.clone(),
             }
         }
     }
@@ -40,6 +56,9 @@ pub mod todolist {
     }
 
     impl TodoList {
+        pub fn new(list: Vec<Todo>) -> TodoList {
+            TodoList { list }
+        }
         pub fn add(&mut self, todo: Todo) {
             self.list.push(todo);
         }
@@ -73,7 +92,21 @@ pub mod todolist {
 
             Ok(())
         }
-        pub fn sort(&mut self) -> Result<(), MyError> {
+        pub fn group_by_category(&self) -> HashMap<&str, TodoList> {
+            let mut hashmap_by_category: HashMap<&str, TodoList> = HashMap::new();
+            for todo in &self.list {
+                let category = &todo.category;
+                let todo_clone = todo.clone();
+                hashmap_by_category
+                    .entry(&todo.category)
+                    .or_insert(TodoList::new(vec![]))
+                    .list
+                    .push(todo_clone);
+            }
+
+            hashmap_by_category
+        }
+        pub fn sort_by_index(&mut self) -> Result<(), MyError> {
             let mut i = 0;
             while i < self.list.len() {
                 match self.list[i].state {
@@ -92,7 +125,7 @@ pub mod todolist {
             }
             Ok(())
         }
-        pub fn remove(&mut self, index: usize) -> Result<(), MyError> {
+        pub fn remove_by_index(&mut self, index: usize) -> Result<(), MyError> {
             if index >= self.list.len() {
                 Err(MyError::IndexError {
                     message: String::from("Index out of bounds for the todo list"),
@@ -155,6 +188,7 @@ pub mod cli {
     use super::error::MyError;
     use super::todolist::{States, Todo, TodoList, init};
     use clap::{Parser, Subcommand};
+    use std::collections::HashMap;
     use std::io;
 
     #[derive(Parser, Debug)]
@@ -167,7 +201,12 @@ pub mod cli {
     #[derive(Subcommand, Debug)]
     pub enum Commands {
         /// Add new todo item
-        Add { term: Vec<String> },
+        Add {
+            term: Vec<String>,
+
+            #[arg(short, long, default_value = "default")]
+            category: String,
+        },
         /// Done todos
         Done { index: Vec<usize> },
         /// Remove todos
@@ -180,53 +219,77 @@ pub mod cli {
             all: bool,
         },
         ///Sort the todo list and put all done todo to tail
-        Sort,
+        Sort {
+            #[arg(short, long, default_value = "true")]
+            by_index: bool,
+        },
         /// Init a todo list
         Init,
         /// Show current todo list
-        Show,
+        Show {
+            #[arg(short, long, default_value = "false")]
+            category: bool,
+        },
     }
 
     pub fn run(todolist: &mut TodoList, args: Args) -> Result<(), MyError> {
         match args.command {
-            Some(Commands::Add { term }) => {
-                todolist.add(Todo::new(term.join(" ")));
+            Some(Commands::Add { term, category }) => {
+                todolist.add(Todo::new(term.join(" "), category));
+                todolist.show()?;
             }
             Some(Commands::Done { index }) => {
                 // user input start from 1, the list index start from 0
                 for i in index {
                     todolist.done(i - 1)?;
                 }
+                todolist.show()?;
             }
             Some(Commands::Remove { index }) => {
                 for i in index {
-                    todolist.remove(i - 1)?;
+                    todolist.remove_by_index(i - 1)?;
                 }
+                todolist.show()?;
             }
             Some(Commands::Edit { index, term }) => {
                 todolist.edit(index - 1, term.join(" "));
+                todolist.show()?;
             }
             Some(Commands::Init) => {
                 init();
+                todolist.show()?;
             }
             Some(Commands::Clear { all }) => {
                 if all {
                     todolist.list.clear();
+                    todolist.show()?;
                 } else {
                     todolist.list.retain(|x| match x.state {
                         States::Undone => true,
                         States::Done => false,
                     });
+                    todolist.show()?;
                 }
             }
-            Some(Commands::Sort) => {
-                todolist.sort();
+            Some(Commands::Sort { by_index }) => {
+                if by_index {
+                    todolist.sort_by_index();
+                }
+                todolist.show()?;
             }
-            _ => (),
+            Some(Commands::Show { category }) => {
+                if category {
+                    let hashmap_by_categroy = todolist.group_by_category();
+                    for (k, v) in &hashmap_by_categroy {
+                        println!("\n{}:", k);
+                        v.show();
+                    }
+                }
+            }
+            _ => {
+                todolist.show()?;
+            }
         }
-
-        todolist.show()?;
-
         Ok(())
     }
 }
